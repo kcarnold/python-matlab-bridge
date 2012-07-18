@@ -4,52 +4,28 @@
 # Max Jaderberg 2012
 ###############################################
 from httplib import BadStatusLine
-import urllib2, urllib, os, json, time
-from multiprocessing import Process
+import urllib2, urllib, os, json
+import uuid
 
 MATLAB_FOLDER = '%s/matlab' % os.path.realpath(os.path.dirname(__file__))
 
-class Matlab(object):
+class MatlabClient(object):
     eval_func = 'web_feval.m'
-    running = False
-    matlab = None
-    host = None
-    port = None
-    server = None
-    id = None
-    server_process = Process()
 
-    def __init__(self, matlab='/Applications/MATLAB_R2011a.app/bin/matlab', host='localhost', port=4000, id='python-matlab-bridge'):
-        self.matlab = matlab
+    def __init__(self, host='localhost', port=4000, id=None):
         self.host = host
         self.port = port
-        self.server = 'http://%s:%s' % (self.host, str(self.port))
+        self.server = 'http://%s:%s' % (self.host, self.port)
+        if id is None:
+            id = str(uuid.uuid1())
         self.id = id
-
-    def start(self):
-        def _run_matlab_server():
-            os.system('%s -nodesktop -nosplash -nodisplay -r "cd pymatbridge/matlab,webserver(%s),exit" -logfile ./pymatbridge/logs/matlablog_%s.txt > ./pymatbridge/logs/bashlog_%s.txt' % (self.matlab, self.port, self.id, self.id))
-            return True
-        # Start the MATLAB server
-        print "Starting MATLAB"
-        self.server_process = Process(target=_run_matlab_server)
-        self.server_process.daemon = True
-        self.server_process.start()
-        while not self.is_connected():
-            print "...still starting up..."
-            time.sleep(1)
-        print "MATLAB started and connected!"
-        return True
-
-
 
     def stop(self):
         # Stop the MATLAB server
         try:
-            try:
-                resp = self._open_page('exit_server.m', {'id': self.id})
-            except BadStatusLine:
-                pass
+            self._open_page('exit_server.m', {'id': self.id})
+        except BadStatusLine:
+            pass
         except urllib2.URLError:
             pass
         print "MATLAB closed"
@@ -74,8 +50,6 @@ class Matlab(object):
         return False
 
     def run(self, func_path, func_args=None, maxtime=None):
-        if self.running:
-            time.sleep(0.5)
         page_args = {
             'func_path': func_path,
         }
@@ -88,9 +62,5 @@ class Matlab(object):
         return result
 
     def _open_page(self, page_name, arguments={}, timeout=10):
-        self.running = True
         page = urllib2.urlopen('%s/%s' % (self.server, page_name), urllib.urlencode(arguments), timeout)
-        self.running = False
         return json.loads(page.read())
-
-
